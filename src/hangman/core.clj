@@ -1,68 +1,91 @@
 (ns hangman.core
-  (:import (java.io Console)))
+  (require [clojure.string :as str]))
 
 ;;;
 ; Game logic
 ;;;
-(defn take-guess [guess guessed]
-  (conj guessed guess))
+(def no-of-guesses 9)
+
+(defn has-been-guessed
+  [guessed char]
+  (or (contains? guessed char) (= char \space)))
 
 (defn answer-guessed?
   [answer guessed]
-  (every?
-    #(or (guessed (str %)) (= % \space))
-    answer))
+  (every? (partial has-been-guessed guessed) answer))
 
-(def no-of-guesses 9)
+(defn incorrect-guesses
+  [answer guessed]
+  (remove (partial contains? (set answer)) guessed))
+
+(defn guesses-remaining
+  [answer guessed]
+  (- no-of-guesses
+     (count (incorrect-guesses answer guessed))))
 
 (defn guess-outcome
   [answer guessed]
   (if (answer-guessed? answer guessed)
     :guesser-wins
-    (if (> (count guessed) no-of-guesses)
+    (if (= (guesses-remaining answer guessed) 0)
       :setter-wins)))
-
-(defn guesses-remaining
-  [guessed]
-  (- no-of-guesses (count guessed)))
 
 ;;;
 ; Displaying game state
 ;;;
 (defn char->placeholder
-  [char guessed]
-  (if (or (contains? guessed (str char)) (= char \space))
-    (str char)
+  [guessed char]
+  (if (has-been-guessed guessed char)
+    char
     "_"))
 
 (defn answer->placeholders
+  "Display the answer with only guessed letters revealed e.g. _ o n k _ y"
   [answer guessed]
-  (clojure.string/join " "
-                       (map #(char->placeholder % guessed) answer)))
+  (str/join " "
+      (map (partial char->placeholder guessed) answer)))
 
 (defn game-state->string
+  "Formats a string that represents the current game state"
   [answer guessed]
   (str "\n" (answer->placeholders answer guessed) "\n\n"
        "Already guessed: " (clojure.string/join ", " (sort guessed)) "\n\n"
-       (guesses-remaining guessed) " guesses remaining\n"))
+       (guesses-remaining answer guessed) " guesses remaining\n"))
+
+(defn guesser-wins
+  "Formats the string to output if the guesser wins"
+  [answer guessed]
+  (str "\n" (answer->placeholders answer guessed) "\n\n"
+       "Guesser wins!"))
+
+(defn setter-wins
+  "Formats the string to output if the setter wins"
+  [answer]
+  (str "Setter wins! The answer was " answer "."))
 
 ;;;
 ; User input
 ;;;
-(defn read-password []
+(defn read-password
+  "Reads console input without displaying it"
+  []
   (String/valueOf (.readPassword (System/console))))
+
+; Helper function for converting a single character string
+; to a character e.g. "j" to \j
+(def str->char first)
 
 ; TODO: validate guess (must be a - z)
 (defn prompt-guess
   [answer guessed]
   (println (game-state->string answer guessed))
   (println "Guess a letter:")
-  (let [guess (read-line)
-        now-guessed (take-guess guess guessed)
+  (let [guess (str->char (read-line))
+        now-guessed (conj guessed guess)
         outcome (guess-outcome answer now-guessed)]
     (case outcome
-      :guesser-wins (println "\n" (answer->placeholders answer now-guessed) "\n\n" "Guesser wins!")
-      :setter-wins (println (str "Setter wins! The answer was " answer "."))
+      :guesser-wins (println (guesser-wins answer now-guessed))
+      :setter-wins (println (setter-wins answer))
       (prompt-guess answer now-guessed))))
 
 (defn play
